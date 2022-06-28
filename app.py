@@ -7,9 +7,10 @@ from urllib.request import urlopen
 
 app = Flask(__name__)
 
-AUTH0_DOMAIN = "dev--miep8j8.us.auth0.com"
+AUTH0_DOMAIN = 'dev--miep8j8.us.auth0.com'
 ALGORITHMS = ['RS256']
-API_AUDIENCE = "image"
+API_AUDIENCE = 'image'
+
 
 class AuthError(Exception):
     def __init__(self, error, status_code):
@@ -99,25 +100,44 @@ def verify_decode_jwt(token):
                 'description': 'Unable to parse authentication token.'
             }, 400)
     raise AuthError({
-                'code': 'invalid_header',
+        'code': 'invalid_header',
                 'description': 'Unable to find the appropriate key.'
-            }, 400)
+    }, 400)
 
 
-def requires_auth(f):
-    @wraps(f)
-    def wrapper(*args, **kwargs):
-        token = get_token_auth_header()
-        try:
-            payload = verify_decode_jwt(token)
-        except:
-            abort(401)
-        return f(payload, *args, **kwargs)
+def check_permissions(permission, payload):
+    if 'permissions' not in payload:
+        raise AuthError({
+            'code': 'invalid_claims',
+            'description': 'Permissions not included in JWT.'
+        }, 400)
 
-    return wrapper
+    if permission not in payload['permissions']:
+        raise AuthError({
+            'code': 'unauthorized',
+            'description': 'Permission not found.'
+        }, 403)
+    return True
 
-@app.route('/headers')
-@requires_auth
-def headers(payload):
-    print(payload)
+
+def requires_auth(permission=""):
+    def requires_auth_decorator(f):
+        @wraps(f)
+        def wrapper(*args, **kwargs):
+            token = get_token_auth_header()
+            try:
+                payload = verify_decode_jwt(token)
+            except:
+                abort(401)
+            check_permissions(permission, payload)    
+            return f(payload, *args, **kwargs)
+
+        return wrapper
+    return requires_auth_decorator
+
+
+@app.route('/images')
+@requires_auth('get:images')
+def images(jwt):
+    print(jwt)
     return 'Access Granted'
